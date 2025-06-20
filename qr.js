@@ -605,196 +605,63 @@ var evaluatematrix = function(matrix) {
 	return score;
 };
 
-// returns the fully encoded QR code matrix which contains given data.
-// it also chooses the best mask automatically when mask is -1.
-var generate = function(data, ver, mode, ecclevel, mask) {
-	var v = VERSIONS[ver];
-	var buf = encode(ver, mode, data, ndatabits(ver, ecclevel) >> 3);
-	buf = augumenteccs(buf, v[1][ecclevel], GF256_GENPOLY[v[0][ecclevel]]);
-
-	var result = makebasematrix(ver);
-	var matrix = result.matrix, reserved = result.reserved;
-	putdata(matrix, reserved, buf);
-
-	if (mask < 0) {
-		// find the best mask
-		maskdata(matrix, reserved, 0);
-		putformatinfo(matrix, reserved, ecclevel, 0);
-		var bestmask = 0, bestscore = evaluatematrix(matrix);
-		maskdata(matrix, reserved, 0);
-		for (mask = 1; mask < 8; ++mask) {
-			maskdata(matrix, reserved, mask);
-			putformatinfo(matrix, reserved, ecclevel, mask);
-			var score = evaluatematrix(matrix);
-			if (bestscore > score) {
-				bestscore = score;
-				bestmask = mask;
-			}
-			maskdata(matrix, reserved, mask);
-		}
-		mask = bestmask;
+/* modified: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+	- remove  : generate() (included in QRCode)
+	- replace : QRCode = {}
+		- svg only: return html string
+		- use external css:
+			<svg>  - display, width, shape-rendering
+			<rect> - fill
+*/
+var QRCode = ( data, ecc ) => {
+	if ( ecc === undefined ) ecc = 1; // 7%-L:1, 15%-M:0, 25%-Q:3, 30%-H:2
+	if ( data.match( NUMERIC_REGEXP ) ) {
+		var mode = MODE_NUMERIC;
+	} else if ( data.match( ALPHANUMERIC_OUT_REGEXP ) ) {
+		var mode = MODE_ALPHANUMERIC;
+	} else {
+		var mode = MODE_OCTET;
 	}
-
-	maskdata(matrix, reserved, mask);
-	putformatinfo(matrix, reserved, ecclevel, mask);
-	return matrix;
-};
-
-// the public interface is trivial; the options available are as follows:
-//
-// - version: an integer in [1,40]. when omitted (or -1) the smallest possible
-//   version is chosen.
-// - mode: one of 'numeric', 'alphanumeric', 'octet'. when omitted the smallest
-//   possible mode is chosen.
-// - ecclevel: one of 'L', 'M', 'Q', 'H'. defaults to 'L'.
-// - mask: an integer in [0,7]. when omitted (or -1) the best mask is chosen.
-//
-// for generate{HTML,PNG}:
-//
-// - modulesize: a number. this is a size of each modules in pixels, and
-//   defaults to 5px.
-// - margin: a number. this is a size of margin in *modules*, and defaults to
-//   4 (white modules). the specficiation mandates the margin no less than 4
-//   modules, so it is better not to alter this value unless you know what
-//   you're doing.
-var QRCode = {
-	'generate': function(data, options) {
-		var MODES = {'numeric': MODE_NUMERIC, 'alphanumeric': MODE_ALPHANUMERIC,
-			'octet': MODE_OCTET};
-		var ECCLEVELS = {'L': ECCLEVEL_L, 'M': ECCLEVEL_M, 'Q': ECCLEVEL_Q,
-			'H': ECCLEVEL_H};
-
-		options = options || {};
-		var ver = options.version || -1;
-		var ecclevel = ECCLEVELS[(options.ecclevel || 'L').toUpperCase()];
-		var mode = options.mode ? MODES[options.mode.toLowerCase()] : -1;
-		var mask = 'mask' in options ? options.mask : -1;
-
-		if (mode < 0) {
-			if (typeof data === 'string') {
-				if (data.match(NUMERIC_REGEXP)) {
-					mode = MODE_NUMERIC;
-				} else if (data.match(ALPHANUMERIC_OUT_REGEXP)) {
-					// while encode supports case-insensitive
-					// encoding, we restrict the data to be
-					// uppercased when auto-selecting the mode.
-					mode = MODE_ALPHANUMERIC;
-				} else {
-					mode = MODE_OCTET;
-				}
-			} else {
-				mode = MODE_OCTET;
-			}
-		} else if (!(mode == MODE_NUMERIC || mode == MODE_ALPHANUMERIC ||
-				mode == MODE_OCTET)) {
-			throw 'invalid or unsupported mode';
+	data       = validatedata( mode, data );
+	for ( var ver = 1; ver <= 40; ver++ ) if ( data.length <= getmaxdatalen( ver, mode, ecc ) ) break;
+	var v      = VERSIONS[ ver ];
+	var buf    = encode( ver, mode, data, ndatabits( ver, ecc ) >> 3 );
+	buf        = augumenteccs( buf, v[ 1 ][ ecc ], GF256_GENPOLY[ v[ 0 ][ ecc ] ] );
+	var result = makebasematrix( ver );
+	var matrix = result.matrix,
+		reserved  = result.reserved;
+	putdata( matrix, reserved, buf );
+	maskdata( matrix, reserved, 0 );
+	putformatinfo( matrix, reserved, ecc, 0 );
+	var bestmask  = 0,
+		bestscore = evaluatematrix( matrix );
+	maskdata( matrix, reserved, 0 );
+	for ( var mask = 1; mask < 8; mask++ ) {
+		maskdata( matrix, reserved, mask );
+		putformatinfo( matrix, reserved, ecc, mask );
+		var score = evaluatematrix( matrix );
+		if ( bestscore > score ) {
+			bestscore = score;
+			bestmask  = mask;
 		}
-
-		data = validatedata(mode, data);
-		if (data === null) throw 'invalid data format';
-
-		if (ecclevel < 0 || ecclevel > 3) throw 'invalid ECC level';
-
-		if (ver < 0) {
-			for (ver = 1; ver <= 40; ++ver) {
-				if (data.length <= getmaxdatalen(ver, mode, ecclevel)) break;
-			}
-			if (ver > 40) throw 'too large data';
-		} else if (ver < 1 || ver > 40) {
-			throw 'invalid version';
-		}
-
-		if (mask != -1 && (mask < 0 || mask > 8)) throw 'invalid mask';
-
-		return generate(data, ver, mode, ecclevel, mask);
-	},
-
-	'generateHTML': function(data, options) {
-		options = options || {};
-		var matrix = QRCode['generate'](data, options);
-		var modsize = Math.max(options.modulesize || 5, 0.5);
-		var margin = Math.max(options.margin !== null ? options.margin : 4, 0.0);
-
-		var e = document.createElement('div');
-		var n = matrix.length;
-		var html = ['<table border="0" cellspacing="0" cellpadding="0" style="border:' +
-			modsize*margin + 'px solid #fff;background:#fff">'];
-		for (var i = 0; i < n; ++i) {
-			html.push('<tr>');
-			for (var j = 0; j < n; ++j) {
-				html.push('<td style="width:' + modsize + 'px;height:' + modsize + 'px' +
-					(matrix[i][j] ? ';background:#000' : '') + '"></td>');
-			}
-			html.push('</tr>');
-		}
-		e.className = 'qrcode';
-		e.innerHTML = html.join('') + '</table>';
-		return e;
-	},
-
-	'generateSVG': function(data, options) {
-		options = options || {};
-		var matrix = QRCode['generate'](data, options);
-		var n = matrix.length;
-		var modsize = Math.max(options.modulesize || 5, 0.5);
-		var margin = Math.max(options.margin? options.margin : 4, 0.0);
-		var size = modsize * (n + 2 * margin);
-
-		var common = ' class= "fg"'+' width="'+modsize+'" height="'+modsize+'"/>';
-
-		var e = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		e.setAttribute('viewBox', '0 0 '+size+' '+size);
-		e.setAttribute('style', 'shape-rendering:crispEdges');
-
-		var svg = [
-			'<style scoped>.bg{fill:#FFF}.fg{fill:#000}</style>',
-			'<rect class="bg" x="0" y="0"',
-			'width="'+size+'" height="'+size+'"/>',
-		];
-
-		var yo = margin * modsize;
-		for (var y = 0; y < n; ++y) {
-			var xo = margin * modsize;
-			for (var x = 0; x < n; ++x) {
-				if (matrix[y][x])
-					svg.push('<rect x="'+xo+'" y="'+yo+'"', common);
-				xo += modsize;
-			}
-			yo += modsize;
-		}
-		e.innerHTML = svg.join('');
-		return e;
-	},
-
-	'generatePNG': function(data, options) {
-		options = options || {};
-		var matrix = QRCode['generate'](data, options);
-		var modsize = Math.max(options.modulesize || 5, 0.5);
-		var margin = Math.max(options.margin != null ? options.margin : 4, 0.0);
-		var n = matrix.length;
-		var size = modsize * (n + 2 * margin);
-
-		var canvas = document.createElement('canvas'), context;
-		canvas.width = canvas.height = size;
-		context = canvas.getContext('2d');
-		if (!context) throw 'canvas support is needed for PNG output';
-
-		context.fillStyle = '#fff';
-		context.fillRect(0, 0, size, size);
-		context.fillStyle = '#000';
-		for (var i = 0; i < n; ++i) {
-			for (var j = 0; j < n; ++j) {
-				if (matrix[i][j]) {
-					context.fillRect(modsize * (margin + j),
-						modsize * (margin + i),
-						modsize, modsize);
-				}
-			}
-		}
-		//context.fillText('evaluation: ' + evaluatematrix(matrix), 10, 10);
-		return canvas.toDataURL();
+		maskdata( matrix, reserved, mask );
 	}
-};
-
+	mask       = bestmask;
+	maskdata( matrix, reserved, mask );
+	putformatinfo( matrix, reserved, ecc, mask );
+	var n      = matrix.length;
+	var rect   = '';
+	var yo     = 0;
+	for ( var y = 0; y < n; y++ ) {
+		var xo = 0;
+		for ( var x = 0; x < n; x++ ) {
+			if ( matrix[ y ][ x ] ) rect += '<rect x="'+ x +'" y="'+ y +'" width="1" height="1"></rect>';
+			xo++;
+		}
+		yo++;
+	}
+	return '<svg viewBox="0 0 '+ n +' '+ n +'">'+ rect +'</svg>'
+}
 return QRCode;
 });
+// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
