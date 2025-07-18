@@ -655,7 +655,7 @@ var QRCode = ( data, ecc ) => {
 	for ( var y = 0; y < n; y++ ) {
 		var xo = 0;
 		for ( var x = 0; x < n; x++ ) {
-			if ( matrix[ y ][ x ] ) rect += '<rect x="'+ x +'" y="'+ y +'" width="1" height="1"></rect>';
+			if ( matrix[ y ][ x ] ) rect += '<rect x="'+ x +'" y="'+ y +'" width="1" height="1" />';
 			xo++;
 		}
 		yo++;
