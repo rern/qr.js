@@ -649,16 +649,18 @@ var QRCode = ( data, ecc ) => {
 	mask       = bestmask;
 	maskdata( matrix, reserved, mask );
 	putformatinfo( matrix, reserved, ecc, mask );
-	var n      = matrix.length;
+		var n      = matrix.length;
 	var rect   = '';
-	var yo     = 0;
 	for ( var y = 0; y < n; y++ ) {
-		var xo = 0;
 		for ( var x = 0; x < n; x++ ) {
-			if ( matrix[ y ][ x ] ) rect += '<rect x="'+ x +'" y="'+ y +'" width="1" height="1" />';
-			xo++;
+			if ( ! matrix[ y ][ x ] ) continue
+			
+			if ( ( y > n - 8 && x < 7 ) || ( y < 7 && ( x < 7 || x > n - 8 ) ) ) {
+				rect += '<rect x="'+ x +'" y="'+ y +'" width="1" height="1" />';
+			} else {
+				rect += '<circle cx="'+ ( x + 0.5 ) +'" cy="'+ ( y + 0.5 ) +'" r="0.5" />';
+			}
 		}
-		yo++;
 	}
 	return '<svg viewBox="0 0 '+ n +' '+ n +'">'+ rect +'</svg>'
 }
